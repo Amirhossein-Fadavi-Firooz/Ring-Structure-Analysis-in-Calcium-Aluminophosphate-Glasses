@@ -1,0 +1,66 @@
+#Initialization
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+variable outputfile string  14.8Al2O3_20CaO_65.2P2O5_Grace
+read_data datafile_modified.dat
+pair_style  grace
+pair_coeff  * * /path/to/workdir/GRACE-1L-OAM_2Feb25 O Al P Ca
+
+timestep 0.002
+
+##################################################
+##              SIMULATION DETAILS              ##
+##################################################
+## Molecular Statics Simulations
+thermo          1
+thermo_style    custom step fnorm fmax  # for fire minimization
+dump            dump_cg all custom 1000 ${outputfile}_cg.*.dump id type x y z # atom positions to dump
+dump_modify     dump_cg pad 8
+
+## 1. cg
+min_style       cg
+minimize        0.0 1.0e-8 1000 1000
+undump          dump_cg
+
+velocity all create 300 4928456 rot yes dist gaussian
+
+
+
+########################################
+## Molecular Dynamics Simulations
+reset_timestep  0
+thermo          1000
+thermo_style    custom step temp etotal pe ke press vol lx ly lz pxx pyy pzz pxy pxz pyz # for nve, nvt and npt
+dump            1 all custom 10000 ${outputfile}.*.dump id type x y z # atom positions to dump
+dump_modify     1 pad 8
+
+## 1. NVE
+neigh_modify every 1 delay 0 check yes
+fix             1 all nve
+run             10000
+unfix           1
+
+## 2. NVT
+fix             2 all nvt temp 300.0 3000.0 0.1    # heating rate is ~ 100 K/ps
+run             50000                              # steps=(Tend-Tstart)/(dq*timestep)
+unfix           2
+
+## Additional runs
+## 3. NVT
+fix             3 all nvt temp 3000.0 3000.0 100       # thermalising
+run             100000                                  # for a total of 100 ps
+unfix           3
+
+## 4. NVT
+fix             4 all nvt temp 3000.0 300.0 100       # quenching 1K/ps
+run             1350000                                # for a total of 4700 ps
+unfix           4
+
+## rescaling the box and atoms to an experimental density of 2.95
+# 6. NPT
+fix             6 all npt temp 300.0 300.0 100 iso 0.0 0.0 1000  # thermalising at 300 K 0 GPa
+run             100000                                           # for a total of 200 ps
+unfix           6
